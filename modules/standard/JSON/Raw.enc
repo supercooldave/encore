@@ -1,0 +1,59 @@
+module Raw
+  
+-- parse trees for raw, uninterpreted JSON 
+
+read trait Value
+end
+
+read class RawString : Value
+
+end
+
+read class RawNumber : Value
+
+end
+
+-- curly braces wrapping comma separated name-value pairs
+read class RawObject : Value
+
+end
+
+
+-- square brackets wrapping ...
+read class RawArray : Value
+  def init(elems : [Value]) : unit
+    this.elems = elems
+  end
+end
+
+
+read class RawBool : Value
+  val value : bool
+  
+  def init(value : bool) : unit
+    this.value = value
+  end
+end
+
+read class Null : Value
+
+end
+
+-- name-value pair
+read class Data
+  val name : String
+  val value : Value
+  
+  def init(name : String, value : t) : unit
+    this.name = name
+    this.value = value
+  end
+end
+
+read class List
+  val elems : [Data]
+  
+  def init(elems : [Data]) : unit
+    this.elems = elems
+  end
+end

@@ -1,0 +1,167 @@
+
+{-
+  NOTES:
+  + perhaps pre-parse JSON into a tree and apply the combinators to the tree elements
+  -}
+
+import Data.Maybee
+import Data.Either
+
+-- Data[t] represents JSON data: "name" : value
+-- where value has type t
+local class Data[t]
+  val name : String
+  val value : t
+  
+  def init(name : String, value : t) : unit
+    this.name = name
+    this.value = value
+  end
+end
+
+typedef Result[t] = Either[String,t]
+
+fun good[t](x : t) : Result[t]
+  Right[String,t](x)
+end
+
+fun bad[t](s : String) : Result[t]
+  Left[String,t](s)
+end
+
+
+read trait Decoder[t]
+  require def decode(str: String) : Result[t]
+end
+
+-- the decoders
+class StringDecoder : Decoder[String]
+  def decode(str: String) : Result[String]
+    val len = str.length()
+    if len > 1 && str.at(0) == '\"' && str.at(len - 1) == '\"' then
+      good(unjust(str.substring(1,len - 2))) : Result[String]
+    else
+      bad[String]("Wrong format for JSON string")
+    end
+  end 
+end
+
+class IntDecoder : Decoder[int]
+  def decode(str: String) : Result[int]
+    match str.to_int() with
+      case Just(i) => good(i)
+      case Nothing => bad[int]("Wrong format for JSON int")
+    end
+  end 
+end
+
+class BoolDecoder : Decoder[bool]
+  def decode(str: String) : Result[bool]
+    match str.to_bool() with
+      case Just(i) => good(i)
+      case Nothing => bad[bool]("Wrong format for JSON int")
+    end
+  end 
+end
+
+class RealDecoder : Decoder[real]
+  def decode(str: String) : Result[real]
+    match str.to_real() with
+      case Just(i) => good(i)
+      case Nothing => bad[real]("Wrong format for JSON int")
+    end
+  end 
+end
+
+class Null[t] : Decoder[t](default)
+  val default : t
+  
+  def init(default : t) : unit
+    this.default = default
+  end
+  
+  def decode(str: String) : Result[t]
+    if str.eq("null") then
+      good(this.default)
+    else
+      bad[t]("Does not match JSON null")
+    end
+  end  
+end
+
+class Nullable[t] : Decoder[Maybe[t]](sub)
+  val sub : Decoder[t]
+  
+  def init(sub : Decoder[t]) : unit
+    this.sub = sub
+  end
+
+  def decode(str: String) : Result[Maybe[t]]
+    -- TODO: finish
+    this.decode(str)
+    -- oneOf([ new Null(Nothing), map(Just, this.sub)]) 
+  end
+end
+
+class Fail[t] : Decoder[t](msg)
+  val msg : String
+  
+  def init(msg : String) : unit
+    this.msg = msg
+  end
+
+  def decode(str: String) : Result[t]
+    bad[t](this.msg)
+  end
+end
+
+class Succeed[t] : Decoder[t](default)
+  val default : t
+  
+  def init(default : t) : unit
+    this.default = default
+  end
+  
+  def decode(str: String) : Result[t]
+    -- TODO: modify so that it works only when JSON string is valid
+    good(this.default)
+  end  
+end
+
+class DecoderHolder[t] : Decoder[t](dec)
+  val dec : String -> Result[t]
+  
+  def init(dec : String -> Result[t]) : unit
+    this.dec = dec
+  end
+
+  def decode(str: String) : Result[t]
+    this.dec(str)
+  end
+end
+
+-- utility functions
+
+fun oneOf[t](decs : [Decoder[t]]) : Decoder[t]
+  -- todo
+  oneOf[t](decs)
+end
+
+fun orElse[t](dec1 : Decoder[t], dec2 : Decoder[t]) : Decoder[t]
+  val next = fun (str : String) : Result[t]
+                match dec1.decode(str) with
+                  case Right(nice) => Right[String,t](nice)
+                  case Left(err) => dec2(str)
+                end
+             end
+  new DecoderHolder[t](next)
+end
+
+fun map[s,t](f : s -> t, dec : Decoder[s]) : Decoder[t]
+  val next = fun (str : String) => dec.decode(str).map(f)
+  new DecoderHolder[t](next)
+end
+
+--- the encoders
+
+
