@@ -5,7 +5,8 @@
   -}
 
 import Data.Maybee
-import Data.Either
+import Data.Either hiding(or_else)
+import qualified Data.Either as E
 
 -- Data[t] represents JSON data: "name" : value
 -- where value has type t
@@ -142,27 +143,20 @@ end
 
 -- utility functions
 
-fun oneOf[t](decs : [Decoder[t]]) : Decoder[t]
-  oneOfHelper(decs,0)
+fun one_of[t](decs : [Decoder[t]]) : Decoder[t]
+  one_of_helper(decs,0)
 where
-  fun oneOfHelper(decs : [Decoder[t]], index : int) : Decoder[t]
+  fun one_of_helper(decs : [Decoder[t]], index : int) : Decoder[t]
     if index < |decs| then
-      orElse(decs(index), oneOfHelper(decs, index + 1))
+      or_olse(decs(index), one_of_helper(decs, index + 1))
     else
       new Fail[t]("No valid choice")
     end
   end
 end
 
-fun orElse[t](dec1 : Decoder[t], dec2 : Decoder[t]) : Decoder[t]
-  val next = fun (str : String) : Result[t]
-                val r = dec1.decode(str)
-                match r with
-                  case Right(nice) => Right[String,t](nice)
-                  case Left(err) => dec2.decode(str)
-                  case _ => dec2.decode(str)
-                end
-             end
+fun or_else[t](dec1 : Decoder[t], dec2 : Decoder[t]) : Decoder[t]
+  val next = fun (str : String) : Result[t] => E.or_else(dec1.decode, dec2,decode)
   new DecoderHolder[t](next)
 end
 
