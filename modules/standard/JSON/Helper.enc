@@ -1,0 +1,6 @@
+-- Remove these later
+
+-- breaks JSON object { "name":value, ... }
+-- into a HashTable of keys to Raw values (unprocessed)
+
+fun parseObject(s : String) : HashMap
