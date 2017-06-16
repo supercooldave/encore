@@ -1,6 +1,67 @@
+import Collections.Mutable.HashMap
+
 -- Remove these later
 
 -- breaks JSON object { "name":value, ... }
 -- into a HashTable of keys to Raw values (unprocessed)
 
-fun parseObject(s : String) : HashMap
+fun parseObject(s : String) : HashMap[String]
+  val hm = new HashMap[String]()
+  val parser = new Parser(s)
+  parser.symbol('{')
+  repeat 
+    val name = parser.name()
+    parser.symbol(':')  
+    val obj = parser.object()
+    hm.add(name, object)
+  until not(parser.symbol(','))
+  parser.symbol('}')
+  
+  hm
+end
+
+typedef Result[a] = Maybe[a]
+
+typedef Parser[a] = (ParserState, String) -> Result[a]
+
+fun fail(ps : ParserState, str : String) : 
+
+local class Parser
+  var position : int = 0
+  val str : String
+  val len : int
+  
+  def init(str : String) : unit
+    this.str = str
+    this.len = str.length()
+  end
+  
+  def symbol(c : char) : bool
+    if this.str.at(this.position) == c then
+      this.position += 1
+      true
+    else
+      false
+    end
+  end
+  
+  def name() : 
+    val len = str.length()
+    if len > 1 && str.at(0) == '\"' && str.at(len - 1) == '\"' then
+      good(unjust(str.substring(1,len - 2))) : Result[String]
+    else
+      bad[String]("Wrong format for JSON string")
+    end
+  
+  def stop() : bool
+    this.position == this.len
+  end
+end
+
+active class Main
+  def main() : unit
+    val parser = new Parser("{}")
+    val res = parser.symbol('{') && parser.symbol('}') && parser.stop()
+    println(res)
+  end
+end
