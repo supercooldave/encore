@@ -1,59 +1,72 @@
 module Raw
   
+import Collections.Mutable.HashMap
+
+  
 -- parse trees for raw, uninterpreted JSON 
 
-read trait Value
+local trait Value
+  require def raw() : String
 end
 
-read class RawString : Value
-
+class RawString : Value(str)
+  val str : String
+  def init(str : String) : unit
+    this.str = str
+  end
+  
+  def raw() : String
+    this.str
+  end
 end
 
-read class RawNumber : Value
-
+class RawNumber : Value
+  def raw() : String
+    "not yet implemented"
+  end
 end
 
 -- curly braces wrapping comma separated name-value pairs
-read class RawObject : Value
-
-end
-
-
--- square brackets wrapping ...
-read class RawArray : Value
-  def init(elems : [Value]) : unit
-    this.elems = elems
+class RawObject : Value
+  val hash : HashMap[Value]
+  
+  def init(hash : HashMap[Value]) : unit
+    this.hash = hash
+  end
+  
+  def raw() : String
+    "not yet implemented"
   end
 end
 
 
-read class RawBool : Value
+-- square brackets wrapping ...
+class RawArray : Value
+  val elems : [Value]
+  def init(elems : [Value]) : unit
+    this.elems = elems
+  end
+  
+  def raw() : String
+    "not yet implemented"
+  end
+end
+
+
+class RawBool : Value
   val value : bool
   
   def init(value : bool) : unit
     this.value = value
   end
-end
-
-read class Null : Value
-
-end
-
--- name-value pair
-read class Data
-  val name : String
-  val value : Value
   
-  def init(name : String, value : t) : unit
-    this.name = name
-    this.value = value
+  def raw() : String
+    "not yet implemented"
   end
 end
 
-read class List
-  val elems : [Data]
-  
-  def init(elems : [Data]) : unit
-    this.elems = elems
+class Null : Value
+  def raw() : String
+    "not yet implemented"
   end
 end

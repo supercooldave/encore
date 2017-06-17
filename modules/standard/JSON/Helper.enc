@@ -1,67 +1,443 @@
+
+
 import Collections.Mutable.HashMap
+import Collections.Mutable.LinkedList
+import JSON.Raw
+import Data.Maybee
 
--- Remove these later
 
--- breaks JSON object { "name":value, ... }
--- into a HashTable of keys to Raw values (unprocessed)
 
-fun parseObject(s : String) : HashMap[String]
-  val hm = new HashMap[String]()
-  val parser = new Parser(s)
-  parser.symbol('{')
-  repeat 
-    val name = parser.name()
-    parser.symbol(':')  
-    val obj = parser.object()
-    hm.add(name, object)
-  until not(parser.symbol(','))
-  parser.symbol('}')
-  
-  hm
-end
+{-
+  /**
+   * Reads the entire input from the given reader and parses it as JSON. The input must contain a
+   * valid JSON value, optionally padded with whitespace.
+   * <p>
+   * Characters are read in chunks into an input buffer of the given size. Hence, wrapping a reader
+   * in an additional <code>BufferedReader</code> likely won't improve reading performance.
+   * </p>
+   *
+   * @param reader
+   *          the reader to read the input from
+   * @param buffersize
+   *          the size of the input buffer in chars
+   * @throws IOException
+   *           if an I/O error occurs in the reader
+   * @throws ParseException
+   *           if the input is not valid JSON
+   */
+  public void parse(Reader reader, int buffersize) throws IOException {
+    if (reader == null) {
+      throw new NullPointerException("reader is null");
+    }
+    if (buffersize <= 0) {
+      throw new IllegalArgumentException("buffersize is zero or negative");
+    }
+    this.reader = reader;
+    buffer = new char[buffersize];
+    bufferOffset = 0;
+    index = 0;
+    fill = 0;
+    line = 1;
+    lineOffset = 0;
+    current = 0;
+    captureStart = -1;
+    read();
+    skipWhiteSpace();
+    readValue();
+    skipWhiteSpace();
+    if (!isEndOfText()) {
+      throw error("Unexpected character");
+    }
+  }
 
-typedef Result[a] = Maybe[a]
 
-typedef Parser[a] = (ParserState, String) -> Result[a]
 
-fun fail(ps : ParserState, str : String) : 
+  private void readEscape() throws IOException {
+    read();
+    switch (current) {
+      case '"':
+      case '/':
+      case '\\':
+        captureBuffer.append((char)current);
+        break;
+      case 'b':
+        captureBuffer.append('\b');
+        break;
+      case 'f':
+        captureBuffer.append('\f');
+        break;
+      case 'n':
+        captureBuffer.append('\n');
+        break;
+      case 'r':
+        captureBuffer.append('\r');
+        break;
+      case 't':
+        captureBuffer.append('\t');
+        break;
+      case 'u':
+        char[] hexChars = new char[4];
+        for (int i = 0; i < 4; i++) {
+          read();
+          if (!isHexDigit()) {
+            throw expected("hexadecimal digit");
+          }
+          hexChars[i] = (char)current;
+        }
+        captureBuffer.append((char)Integer.parseInt(new String(hexChars), 16));
+        break;
+      default:
+        throw expected("valid escape sequence");
+    }
+    read();
+  }
+
+  Location getLocation() {
+    int offset = bufferOffset + index - 1;
+    int column = offset - lineOffset + 1;
+    return new Location(offset, line, column);
+  }
+
+  private ParseException expected(String expected) {
+    if (isEndOfText()) {
+      return error("Unexpected end of input");
+    }
+    return error("Expected " + expected);
+  }
+
+  private ParseException error(String message) {
+    return new ParseException(message, getLocation());
+  }
+
+
+  private boolean isDigit() {
+    return current >= '0' && current <= '9';
+  }
+
+  private boolean isHexDigit() {
+    return current >= '0' && current <= '9'
+        || current >= 'a' && current <= 'f'
+        || current >= 'A' && current <= 'F';
+  }
+
+  private boolean isEndOfText() {
+    return current == -1;
+  }
+
+}
+
+-}
+
 
 local class Parser
-  var position : int = 0
+  var index : int = 0
   val str : String
   val len : int
   
-  def init(str : String) : unit
-    this.str = str
-    this.len = str.length()
+  def init(s : String) : unit
+    this.str = s
+    this.len = s.length()
   end
   
-  def symbol(c : char) : bool
-    if this.str.at(this.position) == c then
-      this.position += 1
-      true
+  def current() : char
+    this.str.at(this.index)
+  end
+  
+  def parse() : Maybe[Value]
+    this.skip()
+    val res = this.parse_value()
+    this.skip()
+    if this.at_end() then
+      res
     else
+      Nothing -- "unexpected character(s) after JSON value"
+    end  
+  end
+  
+  def parse_value() : Maybe[Value]
+    match this.current() with
+      case 'n' => this.parse_null()
+      case 't' => this.parse_true()
+      case 'f' => this.parse_false()
+      case '"' => this.parse_string()
+      case '[' => this.parse_array()
+      case '{' => this.parse_object()
+      case n when n == '-' || n == '0' || n == '1' || n == '2' || n == '3' || n == '4' || n == '5' || n == '6' || n == '7' || n == '8' || n == '9' =>  this.parse_number()
+      case _ => Nothing
+    end
+  end
+
+  def parse_null() : Maybe[Value]
+    if this.symbol('n') && this.symbol('u') && this.symbol('l') && this.symbol('l') then
+      Just(new Null())
+    else
+      Nothing -- expected null
+    end
+  end
+
+  def parse_true() : Maybe[RawBool]
+    if this.symbol('t') && this.symbol('r') && this.symbol('u') && this.symbol('e') then
+      Just(new RawBool(true))
+    else
+      Nothing -- expected null
+    end
+  end
+
+  def parse_false() : Maybe[RawBool]
+    if this.symbol('f') && this.symbol('a') && this.symbol('l') && this.symbol('s') && this.symbol('e') then
+      Just(new RawBool(false))
+    else
+      Nothing -- expected null
+    end
+  end
+
+  def parse_number() : Maybe[Value]
+{-
+
+  private void readNumber() throws IOException {
+    handler.startNumber();
+    startCapture();
+    readChar('-');
+    int firstDigit = current;
+    if (!readDigit()) {
+      throw expected("digit");
+    }
+    if (firstDigit != '0') {
+      while (readDigit()) {
+      }
+    }
+    readFraction();
+    readExponent();
+    handler.endNumber(endCapture());
+  }
+
+  private boolean readFraction() throws IOException {
+    if (!readChar('.')) {
+      return false;
+    }
+    if (!readDigit()) {
+      throw expected("digit");
+    }
+    while (readDigit()) {
+    }
+    return true;
+  }
+
+  private boolean readExponent() throws IOException {
+    if (!readChar('e') && !readChar('E')) {
+      return false;
+    }
+    if (!readChar('+')) {
+      readChar('-');
+    }
+    if (!readDigit()) {
+      throw expected("digit");
+    }
+    while (readDigit()) {
+    }
+    return true;
+  }
+
+  private boolean readDigit() throws IOException {
+    if (!isDigit()) {
+      return false;
+    }
+    read();
+    return true;
+  }
+
+
+-}  
+  
+    Nothing
+  end
+
+  def parse_string() : Maybe[RawString]
+    this.symbol('"')   -- TODO: what if false
+    val start = this.index
+    while (this.current() != '"') do
+        this.read()
+    end
+    match this.str.substring(start, this.index) with
+      case Just(str) => 
+        this.read()
+        Just(new RawString(str))
+      end
+      case Nothing => Nothing
+    end
+  end
+
+  def parse_array() : Maybe[RawArray]
+    val list = new LinkedList[Value]()
+    this.symbol('[')
+    this.skip()
+    println("00")
+    if this.read_char(']') then
+      return Just(new RawArray(this.list_reverse_array(list)))
+    end
+    println("01")
+    do
+      this.skip()
+      println("02")
+      match this.parse_value() with
+        case Nothing => 
+          return Nothing : Maybe[RawArray] -- invalid value
+          () -- to hack the type system
+        end
+        case Just(value) => list.prepend(value)
+      end
+      println("04")
+      this.skip()
+    while this.read_char(',')
+    println("05")
+    if not this.read_char(']') then
+      return Nothing : Maybe[RawArray]-- expected ',' or ']'
+    end
+    return Just(new RawArray(this.list_reverse_array(list)))
+  end
+
+  def private list_reverse_array[t](list : LinkedList[t]) : [t]
+    println("in list_reverse_array")
+    val len = list.size()
+    val iter = list.iterator()
+    val res = new [t](len)
+    
+    for i <- [0 .. len - 1] do
+      res(len - i - 1) = unjust(iter.next())
+    end
+    
+    println("out list_reverse_array")
+    res
+  end
+
+  def parse_object() : Maybe[RawObject]
+    val hash = new HashMap[Value]
+    this.symbol('{')
+    this.skip()
+    if this.read_char('}') then
+      return Just(new RawObject(hash))
+    end
+    do
+      this.skip()
+      match this.parse_name() with
+        case Nothing => return Nothing  : Maybe[RawObject]-- expected a name
+        case Just(name) => 
+          this.skip()
+          if (not this.read_char(':')) then
+            return Nothing : Maybe[RawObject] -- expected ':'
+          end
+          this.skip()
+          match this.parse_value() with
+            case Nothing => 
+              return Nothing  : Maybe[RawObject] -- expected a name
+            end
+            case Just(value) =>
+              hash.set(name.raw(), value)
+              this.skip()
+              Nothing  : Maybe[RawObject] -- to fool the type checker
+            end
+          end
+        end
+      end
+    while this.read_char(',')
+    if not this.read_char('}') then
+      return Nothing  : Maybe[RawObject]-- expected ',' or '}'
+    end
+    Just(new RawObject(hash))
+  end
+
+  def parse_name() : Maybe[Value]
+    if this.current() != '"' then
+      Nothing -- expected name
+    else
+      this.parse_string()
+    end
+  end
+  
+  def read() : unit
+    this.index += 1
+  end
+
+  def skip() : unit
+    while this.is_white_space() do
+      this.read()
+    end
+  end
+  
+  def private symbol(ch : char) : bool
+    val res = this.current() == ch
+    this.read()
+    res
+  end
+
+  def private is_white_space() : bool
+    this.current() == ' ' || this.current() == '\t' || this.current() == '\n' || this.current() == '\r'
+  end
+  
+  def private at_end() : bool
+    this.index == this.len
+  end
+  
+  def private read_char(ch : char) : bool
+    if this.current() != ch then
       false
-    end
-  end
-  
-  def name() : 
-    val len = str.length()
-    if len > 1 && str.at(0) == '\"' && str.at(len - 1) == '\"' then
-      good(unjust(str.substring(1,len - 2))) : Result[String]
     else
-      bad[String]("Wrong format for JSON string")
+      this.read()
+      true
     end
-  
-  def stop() : bool
-    this.position == this.len
   end
 end
 
+
 active class Main
   def main() : unit
-    val parser = new Parser("{}")
-    val res = parser.symbol('{') && parser.symbol('}') && parser.stop()
-    println(res)
+    val ps = new Parser("null")
+    if is_just(ps.parse_null()) then
+      println("Parse of null succeeded")
+    else 
+      println("Parse of null failed")
+    end  
+    
+    val ps = new Parser("\"token\"")
+    match ps.parse_string() with
+      case Just(str) => println("Parse of string got: {}", str.raw())
+      case Nothing => println("Parse of string failed")
+    end
+
+    val empty = "{}"
+    val full = "{ \"name\" : true,  \"token\" : false }"
+    
+    val ps = new Parser(empty)
+    match ps.parse_object() with
+      case Just(str) => println("Parse of string got: {}", str.raw())
+      case Nothing => println("Parse of string failed")
+    end
+    println("1")
+    
+    val ps = new Parser(full)
+    match ps.parse_object() with
+      case Just(str) => println("Parse of string got: {}", str.raw())
+      case Nothing => println("Parse of string failed")
+    end
+    println("2")
+
+    val emptyA = "[]"
+    val fullA = "[true, true, false]"
+    val ps = new Parser(emptyA)
+    match ps.parse_array() with
+      case Just(str) => println("Parse of string got: {}", str.raw())
+      case Nothing => println("Parse of string failed")
+    end
+    println("3")
+    
+    val ps = new Parser(fullA)
+    match ps.parse_array() with
+      case Just(str) => println("Parse of string got: {}", str.raw())
+      case Nothing => println("Parse of string failed")
+    end
+    
+    println("4")
+
+    -- also test for empty JSON
   end
 end
