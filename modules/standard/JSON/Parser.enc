@@ -340,7 +340,8 @@ active class Main
       case Nothing => println("Parse of number failed")
     end
 
-
     -- also test for empty JSON
+    
+    -- also test top-level parse value
   end
 end
