@@ -20,9 +20,15 @@ class RawString : Value(str)
   end
 end
 
-class RawNumber : Value
+class RawNumber : Value(num)
+  val num : String
+  
+  def init(num : String) : unit
+    this.num = num
+  end
+  
   def raw() : String
-    "not yet implemented"
+    this.num
   end
 end
 
