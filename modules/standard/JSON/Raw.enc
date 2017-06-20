@@ -2,7 +2,9 @@ module Raw -- Rename
   
 import Collections.Mutable.HashMap
 
-  
+
+-- TODO: add to string
+
 -- parse trees for raw, uninterpreted JSON 
 
 local trait Value
@@ -17,6 +19,35 @@ local trait Value
   require def Null()      : Maybe[unit]
 end
 
+fun stringJ(s : String) : Value
+  new RawString(s)
+end
+
+fun nullJ() : Value
+  new Null()
+end
+
+fun intJ(i : int) : Value
+  new RawNumber(string_from_int(i))
+end
+
+fun readJ(r : real) : Value
+  new RawNumber(string_from_real(r))
+end
+
+fun objectJ(fields : [(String, Value)]) : Value
+  new RawObject((new HashMap[Value]).populate(fields))
+end
+
+fun arrayJ(entries : [Value]) : Value
+  new RawArray(entries)
+end
+
+fun boolJ(b : bool) : Value
+  new RawBool(b)
+end
+
+-- underlying classes
 class RawString : Value(str)
   val str : String
   def init(str : String) : unit
@@ -51,6 +82,7 @@ class RawString : Value(str)
     Nothing
   end
 end
+
 
 class RawNumber : Value(num)
   val num : String
@@ -198,6 +230,7 @@ class RawBool : Value(value)
     Nothing
   end
 end
+
 
 class Null : Value
   def raw() : String
