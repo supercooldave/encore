@@ -7,6 +7,14 @@ import Collections.Mutable.HashMap
 
 local trait Value
   require def raw() : String
+  
+  -- pattern matching functions
+  require def RawString() : Maybe[String]
+  require def RawNumber() : Maybe[String]
+  require def RawObject() : Maybe[HashMap[Value]]
+  require def RawArray()  : Maybe[[Value]]
+  require def RawBool()   : Maybe[bool]
+  require def Null()      : Maybe[unit]
 end
 
 class RawString : Value(str)
@@ -17,6 +25,30 @@ class RawString : Value(str)
   
   def raw() : String
     this.str
+  end
+  
+  def RawString() : Maybe[String]
+    Just(this.str)
+  end
+  
+  def RawNumber() : Maybe[String]
+    Nothing
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Nothing
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Nothing
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Nothing
+  end
+    
+  def Null()      : Maybe[unit]
+    Nothing
   end
 end
 
@@ -30,10 +62,34 @@ class RawNumber : Value(num)
   def raw() : String
     this.num
   end
+  
+  def RawString() : Maybe[String]
+    Nothing
+  end
+  
+  def RawNumber() : Maybe[String]
+    Just(this.num)
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Nothing
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Nothing
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Nothing
+  end
+    
+  def Null()      : Maybe[unit]
+    Nothing
+  end
 end
 
 -- curly braces wrapping comma separated name-value pairs
-class RawObject : Value
+class RawObject : Value(hash)
   val hash : HashMap[Value]
   
   def init(hash : HashMap[Value]) : unit
@@ -43,11 +99,34 @@ class RawObject : Value
   def raw() : String
     "not yet implemented"
   end
+  def RawString() : Maybe[String]
+    Nothing
+  end
+  
+  def RawNumber() : Maybe[String]
+    Nothing
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Just(this.hash)
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Nothing
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Nothing
+  end
+    
+  def Null()      : Maybe[unit]
+    Nothing
+  end
 end
 
 
 -- square brackets wrapping ...
-class RawArray : Value
+class RawArray : Value(elems)
   val elems : [Value]
   
   def init(elems : [Value]) : unit
@@ -57,10 +136,34 @@ class RawArray : Value
   def raw() : String
     "not yet implemented"
   end
+  
+  def RawString() : Maybe[String]
+    Nothing
+  end
+  
+  def RawNumber() : Maybe[String]
+    Nothing
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Nothing
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Just(this.elems)
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Nothing
+  end
+    
+  def Null()      : Maybe[unit]
+    Nothing
+  end
 end
 
 
-class RawBool : Value
+class RawBool : Value(value)
   val value : bool
   
   def init(value : bool) : unit
@@ -70,10 +173,58 @@ class RawBool : Value
   def raw() : String
     "not yet implemented"
   end
+  
+  def RawString() : Maybe[String]
+    Nothing
+  end
+  
+  def RawNumber() : Maybe[String]
+    Nothing
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Nothing
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Nothing
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Just(this.value)
+  end
+    
+  def Null()      : Maybe[unit]
+    Nothing
+  end
 end
 
 class Null : Value
   def raw() : String
     "not yet implemented"
+  end
+
+  def RawString() : Maybe[String]
+    Nothing
+  end
+  
+  def RawNumber() : Maybe[String]
+    Nothing
+  end
+    
+  def RawObject() : Maybe[HashMap[Value]]
+    Nothing
+  end
+    
+  def RawArray()  : Maybe[[Value]]
+    Nothing
+  end
+    
+  def RawBool()   : Maybe[bool]
+    Nothing
+  end
+    
+  def Null()      : Maybe[unit]
+    Just(())
   end
 end

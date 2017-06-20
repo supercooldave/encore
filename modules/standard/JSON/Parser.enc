@@ -1,4 +1,4 @@
-
+module Parser
 
 import Collections.Mutable.HashMap
 import Collections.Mutable.LinkedList
@@ -6,6 +6,9 @@ import JSON.Raw
 import Data.Maybee
 import Data.Char as Char
 
+fun parse(str : String) : Maybe[Value]
+  (new Parser(str)).parse()
+end
 
 local class Parser
   var index : int = 0

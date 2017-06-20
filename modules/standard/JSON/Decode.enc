@@ -1,34 +1,12 @@
--- ELM
-module Json.Decode exposing
-  ( Decoder, string, bool, int, float
-  , nullable, list, array, dict, keyValuePairs
-  , field, at, index
-  , maybe, oneOf
-  , decodeString, decodeValue, Value
-  , map, map2, map3, map4, map5, map6, map7, map8
-  , lazy, value, null, succeed, fail, andThen
-  )
+module Decode
 
-{-
-  NOTES:
-  + perhaps pre-parse JSON into a tree and apply the combinators to the tree elements
-  -}
-
-import Data.Maybee
+import Data.Maybee hiding(map)
 import Data.Either hiding(or_else)
 import Collections.Mutable.HashMap
+import JSON.Parser
+import JSON.Raw
 
--- Data[t] represents JSON data: "name" : value
--- where value has type t
-local class Data[t]
-  val name : String
-  val value : t
-  
-  def init(name : String, value : t) : unit
-    this.name = name
-    this.value = value
-  end
-end
+{- The design of this module follows Elm's -}
 
 -- TODO: move to another module related to Exceptions 
 -- But inside Encore, not Sahand's
@@ -43,145 +21,155 @@ fun bad[t](s : String) : Result[t]
 end
 
 
-{-| A value that knows how to decode JSON values.
+{- decode :: (Decoder[t], String) -> Result[String,t]
+   first parses the string into a JSON value
+   and then runs a decoder on the result.
+   Fails if either the parser or the decoder fails
+
+     decode(new IntDecoder(), "4")      == Right 4
+     decode(new IntDecoder(), "3 + 2")  == Left ...
+     
+  TODO: find an easier way of creating decoders
 -}
-read trait Decoder[t]
-  require def decode(str: String) : Result[t]
+fun decode[t](decoder : Decoder[t], str: String) : Result[t]
+  match parse(str) with
+    case Nothing => bad[t]("JSON parser failed.")
+    case Just(raw) => decoder.decode(raw)
+  end
 end
 
--- Running a decoder
-{-| Parse the given string into a JSON value and then run the `Decoder` on it.
-This will fail if the string is not well-formed JSON or if the `Decoder`
-fails for some reason.
 
-    (new IntDecoder).decode "4"      == Right 4
-    (new IntDecoder).decode "1 + 2"  == Left ...
-    
-    -- TODO make it easier to build these, without new.
--}
-
+-- A trait for JSON decoders
+read trait Decoder[t]
+  require def decode(raw: Value) : Result[t]
+end
 
 -- the decoders
 
-{-| Decode a JSON string into an Elm `String`.
+{-  Decode JSON String into a String 
 
-    decodeString string "true"              == Err ...
-    decodeString string "42"                == Err ...
-    decodeString string "3.14"              == Err ...
-    decodeString string "\"hello\""         == Ok "hello"
-    decodeString string "{ \"hello\": 42 }" == Err ...
+    decode(new StringDecoder(), "true")              == Left ...
+    decode(new StringDecoder(), "42")                == Left ...
+    decode(new StringDecoder(), "3.14")              == Left ...
+    decode(new StringDecoder(), "\"hello\"")         == Right "hello"
+    decode(new StringDecoder(), "{ \"hello\": 42 }") == Left ...
 -}
 class StringDecoder : Decoder[String]
-  def decode(str: String) : Result[String]
-    val len = str.length()
-    if len > 1 && str.at(0) == '\"' && str.at(len - 1) == '\"' then
-      good(unjust(str.substring(1,len - 2))) : Result[String]
-    else
-      bad[String]("Wrong format for JSON string")
+  def decode(raw: Value) : Result[String]
+    match raw with
+      case RawString(str) => good(str) 
+      case _ => bad[String]("Wrong format for JSON string")
     end
   end 
 end
 
-{-| Decode a JSON number into an Elm `Int`.
+{- Decode a JSON number into an int
 
-    decodeString int "true"              == Err ...
-    decodeString int "42"                == Ok 42
-    decodeString int "3.14"              == Err ...
-    decodeString int "\"hello\""         == Err ...
-    decodeString int "{ \"hello\": 42 }" == Err ...
+    decode(new IntDecoder(), "true")              == Left ...
+    decode(new IntDecoder(), "42")                == Right 42
+    decode(new IntDecoder(), "3.14")              == Left ...
+    decode(new IntDecoder(), "\"hello\"")         == Left ...
+    decode(new IntDecoder(), "{ \"hello\": 42 }") == Left ...
 -}
 class IntDecoder : Decoder[int]
-  def decode(str: String) : Result[int]
-    match str.to_int() with
-      case Just(i) => good(i)
-      case Nothing => bad[int]("Wrong format for JSON int")
+  def decode(raw: Value) : Result[int]
+    match raw with
+      case RawNumber(num) =>
+        match num.to_int() with
+          case Just(i) => good(i)
+          case Nothing => bad[int]("Wrong format for JSON int")
+        end
+      end
+      case _ => bad[int]("Wrong format for JSON int")
     end
   end 
 end
 
-{-| Decode a JSON boolean into an Elm `Bool`.
 
-    decodeString bool "true"              == Ok True
-    decodeString bool "42"                == Err ...
-    decodeString bool "3.14"              == Err ...
-    decodeString bool "\"hello\""         == Err ...
-    decodeString bool "{ \"hello\": 42 }" == Err ...
+{- Decode a JSON boolean into a bool
+
+    decode(new BoolDecoder(), "true")              == Right True
+    decode(new BoolDecoder(), "42")                == Left ...
+    decode(new BoolDecoder(), "3.14")              == Left ...
+    decode(new BoolDecoder(), "\"hello\"")         == Left ...
+    decode(new BoolDecoder(), "{ \"hello\": 42 }") == Left ...
 -}
 class BoolDecoder : Decoder[bool]
-  def decode(str: String) : Result[bool]
-    match str.to_bool() with
-      case Just(i) => good(i)
-      case Nothing => bad[bool]("Wrong format for JSON int")
+  def decode(raw: Value) : Result[bool]
+    match raw with
+      case RawBool(i) => good(i)
+      case _ => bad[bool]("Wrong format for JSON bool")
     end
   end 
 end
 
-{-| Decode a JSON number into an Elm `Float`.
+{- Decode a JSON number into a real
 
-    decodeString float "true"              == Err ..
-    decodeString float "42"                == Ok 42
-    decodeString float "3.14"              == Ok 3.14
-    decodeString float "\"hello\""         == Err ...
-    decodeString float "{ \"hello\": 42 }" == Err ...
+    decode(new RealDecoder(), "true")              == Left ..
+    decode(new RealDecoder(), "42")                == Right 42
+    decode(new RealDecoder(), "3.14")              == Right 3.14
+    decode(new RealDecoder(), "\"hello\"")         == Left ...
+    decode(new RealDecoder(), "{ \"hello\": 42 }") == Left ...
 -}
 class RealDecoder : Decoder[real]
-  def decode(str: String) : Result[real]
-    match str.to_real() with
-      case Just(i) => good(i)
-      case Nothing => bad[real]("Wrong format for JSON int")
+  def decode(raw: Value) : Result[real]
+    match raw with
+      case RawNumber(num) =>
+        match num.to_real() with
+          case Just(i) => good(i)
+          case Nothing => bad[real]("Wrong format for JSON real")
+        end
+      end
+      case _ => bad[real]("Wrong format for JSON real")
     end
   end 
 end
 
+{- Decode a `null` value into some value.
 
-{-| Decode a `null` value into some Elm value.
+    decode(new NullDecoder[bool](False), "null") == Right False
+    decode(new NullDecoder[int](42), "null") == Right 42
+    decode(new NullDecoder[int](42), "42") == Left ...
+    decode(new NullDecoder[int](42), "false") == Left ...
 
-    decodeString (null False) "null" == Ok False
-    decodeString (null 42) "null"    == Ok 42
-    decodeString (null 42) "42"      == Err ..
-    decodeString (null 42) "false"   == Err ..
-
-So if you ever see a `null`, this will return whatever value you specified.
 -}
-class Null[t] : Decoder[t](default)
+class NullDecoder[t] : Decoder[t](default)
   val default : t
   
   def init(default : t) : unit
     this.default = default
   end
   
-  def decode(str: String) : Result[t]
-    if str.eq("null") then
-      good(this.default)
-    else
-      bad[t]("Does not match JSON null")
+  def decode(raw: Value) : Result[t]
+    match raw with
+      case Null() => good(this.default)
+      case _ => bad[t]("Does not match JSON null")
     end
   end  
 end
 
-{-| Decode a nullable JSON value into an Elm value.
 
-    decodeString (nullable int) "13"    == Ok (Just 13)
-    decodeString (nullable int) "42"    == Ok (Just 42)
-    decodeString (nullable int) "null"  == Ok Nothing
-    decodeString (nullable int) "true"  == Err ..
+{- Decode a nullable JSON value into an Elm value.
+
+    decode(new Nullable[int](new IntDecoder()), "42")   == Right (Just 42)
+    decode(new Nullable[int](new IntDecoder()), "null") == Right Nothing
+    decode(new Nullable[int](new IntDecoder()), "true") == Left ...
 -}
 class Nullable[t] : Decoder[Maybe[t]](dec)
   val dec : Decoder[Maybe[t]]
   
   def init(sub : Decoder[t]) : unit
-    this.dec = one_of([ new NullDecoder(Nothing), map(Just, this.sub)]) 
+    this.dec = one_of([ new NullDecoder[Maybe[t]](Nothing) : Decoder[Maybe[t]], 
+                        map(fun (x : t) => Just(x), sub)]) 
   end
 
-  def decode(str: String) : Result[Maybe[t]]
-    this.dec.decode(str)
+  def decode(raw: Value) : Result[Maybe[t]]
+    this.dec.decode(raw)
   end
 end
 
-{-| Ignore the JSON and make the decoder fail. This is handy when used with
-`oneOf` or `andThen` where you want to give a custom error message in some
-case.
--}
+
+{- ignore the JSON and fail -}
 class Fail[t] : Decoder[t](msg)
   val msg : String
   
@@ -189,24 +177,18 @@ class Fail[t] : Decoder[t](msg)
     this.msg = msg
   end
 
-  def decode(str: String) : Result[t]
-    -- TODO: check whether this should actually "consume" the JSON
+  def decode(raw: Value) : Result[t]
     bad[t](this.msg)
   end
 end
 
 
-{-| Ignore the JSON and produce a certain Elm value.
 
-    decodeString (succeed 42) "true"    == Ok 42
-    decodeString (succeed 42) "[1,2,3]" == Ok 42
-    decodeString (succeed 42) "hello"   == Err ... -- this is not a valid JSON string
-
-This is handy when used with `oneOf` or `andThen`.
+{- Ignore the JSON and produce a certain value.  
+    decode(new Succeed[int](42), "true")    == Right 42
+    decode(new Succeed[int](42), "[1,2,3]") == Right 42
+    decode(new Succeed[int](42), "Hello")   == Left ... -- this is not a valid JSON string
 -}
-succeed : a -> Decoder a
-succeed =
-  Native.Json.succeed
 class Succeed[t] : Decoder[t](default)
   val default : t
   
@@ -214,55 +196,59 @@ class Succeed[t] : Decoder[t](default)
     this.default = default
   end
   
-  def decode(str: String) : Result[t]
-    -- TODO: modify so that it works only when JSON string is valid
+  def decode(raw: Value) : Result[t]
     good(this.default)
   end  
 end
 
 class DecoderHolder[t] : Decoder[t](dec)
-  val dec : String -> Result[t]
+  val dec : Value -> Result[t]
   
-  def init(dec : String -> Result[t]) : unit
+  def init(dec : Value -> Result[t]) : unit
     this.dec = dec
   end
 
-  def decode(str: String) : Result[t]
-    this.dec(str)
+  def decode(raw: Value) : Result[t]
+    this.dec(raw)
   end
 end
 
-{-| Decode a JSON object, requiring a particular field.
 
-    decodeString (field "x" int) "{ \"x\": 3 }"            == Ok 3
-    decodeString (field "x" int) "{ \"x\": 3, \"y\": 4 }"  == Ok 3
-    decodeString (field "x" int) "{ \"x\": true }"         == Err ...
-    decodeString (field "x" int) "{ \"y\": 4 }"            == Err ...
 
-    decodeString (field "name" string) "{ \"name\": \"tom\" }" == Ok "tom"
+{- Extract a particular field from a JSON object
 
-The object *can* have other fields. Lots of them! The only thing this decoder
-cares about is if `x` is present and that the value there is an `Int`.
+    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": 3 }")                == Right 3
+    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": 3, \"y\": 4 }")      == Right 3
+    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": true }")             == Left ...
+    decode(new Field[int]("x", new IntDecoder()), "{ \"y\": 4 }")                == Left ...
+    decode(new Field[String]("name", new StringDecoder()), "{ \"name\": \"tom\" }") == Right "tom"
 -}
--- decodes an object { "name1" : value1, "name2" : value2,  ... }
--- where name is one of name1, etc, pulling out an decoding the
--- corresponding values (other fields are ignored)
-class Field[t] : Decoder[t](name)
+class Field[t] : Decoder[t](name, sub)
   val name : String
+  val sub : Decoder[t]
   
-  def init(name : String) : unit
+  def init(name : String, sub : Decoder[t]) : unit
     this.name = name
+    this.sub = sub
   end
   
-  def decode(str: String) : Result[t]
-    
+  def decode(raw: Value) : Result[t]
+    match raw with
+      case RawObject(hash) => 
+        match hash.get_value(this.name) with
+          case Just(value) => this.sub.decode(value)
+          case Nothing => bad[t]("Expected a JSON object with field '".concatenate(this.name).concatenate("'"))
+        end
+      end
+      case _ => bad[t]("Expected a JSON object")
+    end
   end
 end
 
 
-{-| Decode a nested JSON object, requiring certain fields.
+{- Extract a particular path from a JSON object
 
-    json = """{ "person": { "name": "tom", "age": 42 } }"""
+    json = "{ "person": { "name": "tom", "age": 42 } }"
 
     decodeString (at ["person", "name"] string) json  == Ok "tom"
     decodeString (at ["person", "age" ] int   ) json  == Ok "42
@@ -271,14 +257,41 @@ This is really just a shorthand for saying things like:
 
     field "person" (field "name" string) == at ["person","name"] string
 -}
-at : List String -> Decoder a -> Decoder a
-at fields decoder =
-    List.foldr field decoder fields
--- TODO
+class At[t] : Decoder[t](sub, path)
+  val path : [String]
+  val sub : Decoder[t]
+  
+  def init(path : [String], sub : Decoder[t]) : unit
+    this.path = path
+    this.sub = sub
+  end
+
+  def decode(raw : Value) : Result[t]
+    var node = raw
+    var decoder = this.sub
+    for name <- this.path do
+      match dig(name, node) with
+        case Just(value) => 
+          node = value 
+          bad[t]("nothing") -- value ignored, used to help type checker
+        end
+        case Nothing => return bad[t]("Expect path ".concatenate(".".join(this.path)))
+      end
+    end    
+    decoder.decode(node)
+  where
+    fun dig(name : String, node : Value) : Maybe[Value]
+      match node with
+        case RawObject(hash) => hash.get_value(name)
+        case _ => Nothing
+      end
+    end
+  end
+end
 
 
-{-| Decode a JSON array, requiring a particular index.
-
+{- extract given index of JSON array
+TODO: fix comment
     json = """[ "alice", "bob", "chuck" ]"""
 
     decodeString (index 0 string) json  == Ok "alice"
@@ -286,14 +299,34 @@ at fields decoder =
     decodeString (index 2 string) json  == Ok "chuck"
     decodeString (index 3 string) json  == Err ...
 -}
-index : Int -> Decoder a -> Decoder a
-index =
-    Native.Json.decodeIndex
+class Index[t] : Decoder[t](index, dec)
+  val index : int
+  val dec : Decoder[t]
+  
+  def init(index : int, dec : Decoder[t]) : unit
+    this.index = index
+    this.dec = dec
+  end
+  
+  def decode(raw : Value) : Result[t]
+    match raw with
+      case RawArray(arr) => 
+        if this.index >= 0 && this.index < |arr| then
+          this.dec.decode(arr(this.index))
+        else
+          bad[t]("Index out of bounds")
+        end
+      end
+      case _ => bad[t]("Expected JSON array")
+    end
+  end
+end
 
-{-| Decode a JSON array into an Elm `Array`.
 
-    decodeString (array int) "[1,2,3]"       == Ok (Array.fromList [1,2,3])
-    decodeString (array bool) "[true,false]" == Ok (Array.fromList [True,False])
+{- Decode a JSON array .
+
+    decode(new ArrayDecoder[int](new IntDecoder()), "[1,2,3]")      == Right [1,2,3]
+    decode(new ArrayDecoder[int](new IntDecoder()), "[true,false]") == Right [true,false] 
 -}
 class ArrayDecoder[t] : Decoder[[t]](dec)
   val dec : Decoder[t]
@@ -302,33 +335,77 @@ class ArrayDecoder[t] : Decoder[[t]](dec)
     this.dec = dec
   end
   
-  def decode(str: String) : Result[[t]]
-    -- TODO: implement
+  def decode(raw: Value) : Result[[t]]
+    match raw with
+      case RawArray(arr) => 
+        val res = new [t](|arr|)
+        for i <- [0 .. |arr| - 1] do
+          match this.dec.decode(arr(i)) with
+            case Right(v) => 
+              res(i) = v
+              bad[[t]]("Nothing") -- a hack to please type system
+            end
+            case Left(err) => return bad[[t]](err)
+          end
+        end
+        good(res)
+      end
+      case _ => bad[[t]]("Expected JSON array")
+    end
   end
 end
 
 
 
-{-| Decode a JSON object into an Elm `Dict`.
+{- Decode a JSON object into a hash table
 
-    decodeString (dict int) "{ \"alice\": 42, \"bob\": 99 }"
-      == Dict.fromList [("alice", 42), ("bob", 99)]
+    decode(new Dict[t](new IntDecoder()), "{ \"alice\": 42, \"bob\": 99 }")
+      == HashMap["alice" => 42, "bob" => 99]
 -}
-dict : Decoder a -> Decoder (Dict String a)
-dict decoder =
-  map Dict.fromList (keyValuePairs decoder)
+class Dict[t] : Decoder[HashMap[t]](dec)
+  val dec : Decoder[t]
+  
+  def init(dec : Decoder[t]) : unit
+    this.dec = dec
+  end
+  
+  def decode(raw : Value) : Result[HashMap[t]]
+    match raw with
+      case RawObject(hash) => 
+        val iter = hash.iterator()
+        val new_map = new HashMap[t]()
+        while iter.has_next() do
+          val x = unjust(iter.next())
+          match this.dec.decode(x.value) with
+            case Right(y) => 
+              new_map.set(x.key, y)
+              bad[HashMap[t]]("Nothing")  -- HACK to please type checker
+            end
+            case Left(err) => return bad[HashMap[t]](err)
+          end
+        end
+
+        return good(new_map)
+      end
+      case _ => bad[HashMap[t]]("Expected JSON object")
+    end
+  end
+end
 
 
 
+{- Decode a JSON object into an array of pairs.
 
-{-| Decode a JSON object into an Elm `List` of pairs.
-
-    decodeString (keyValuePairs int) "{ \"alice\": 42, \"bob\": 99 }"
+    decode(keyValuePairs(new IntDecoder()), "{ \"alice\": 42, \"bob\": 99 }")
       == [("alice", 42), ("bob", 99)]
 -}
 keyValuePairs : Decoder a -> Decoder (List (String, a))
 keyValuePairs =
   Native.Json.decodeKeyValuePairs
+
+{- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 
 -- utility functions
@@ -353,9 +430,8 @@ You could also use `oneOf` to help version your data. Try the latest format,
 then a few older ones that you still support. You could use `andThen` to be
 even more particular if you wanted.
 -}
-oneOf : List (Decoder a) -> Decoder a
-oneOf =
-    Native.Json.oneOf
+-}
+
 fun one_of[t](decs : [Decoder[t]]) : Decoder[t]
   one_of_helper(decs,0)
 where
@@ -370,7 +446,7 @@ end
 
 -- TODO: comment (basically, the core of one_of)
 fun or_else[t](dec1 : Decoder[t], dec2 : Decoder[t]) : Decoder[t]
-  val next = fun (str : String)
+  val next = fun (str : Value)
                val one = dec1.decode(str)
                if is_right(one) then
                  one
@@ -381,7 +457,7 @@ fun or_else[t](dec1 : Decoder[t], dec2 : Decoder[t]) : Decoder[t]
   new DecoderHolder[t](next)
 end
 
-
+{-
 {-| Helpful for dealing with optional fields. Here are a few slightly different
 examples:
 
@@ -417,27 +493,21 @@ value : Decoder Value
 value =
   Native.Json.decodePrimitive "value"
 
-
+-}
 
 -- mapping functions
 fun map[s,t](f : s -> t, dec : Decoder[s]) : Decoder[t]
-  val next = fun (str : String) => dec.decode(str).map(f)
+  val next = fun (raw : Value) : Result[t] => dec.decode(raw).map(f) 
   new DecoderHolder[t](next)
 end
 
+{-
 --- ELM STUFF
 --- ELM STUFF
 --- ELM STUFF
 --- ELM STUFF
 --- ELM STUFF
 --- ELM STUFF
-
-
-
-
-
-
-
 
 
 
@@ -609,7 +679,7 @@ lazy : (() -> Decoder a) -> Decoder a
 lazy thunk =
   andThen thunk (succeed ())
 
-
+-}
 
 
 
