@@ -1,0 +1,103 @@
+
+import JSON.Decode
+import JSON.Encode
+import JSON.Parser
+
+import Data.Either
+
+{-
+decode
+,stringD
+,intD
+,boolD
+,realD
+,nullD
+,nullable
+,fail
+,succeed
+,field
+,at
+,index
+,array
+,dict
+-- ,key_value_pairs
+,maybe
+,value
+,map
+,map2
+,map3
+,and_then
+,lazy
+,Result
+-}
+
+fun printResult[t](rp : t -> String, x : Result[t]) : unit
+  match x with
+    case Right(y) => println("{}", rp(y))
+    case Left(err) => println("Error: {}", err)
+  end
+end
+
+fun printMaybe[t](rp : t -> String, x : Maybe[t]) : unit
+  match x with
+    case Just(ice) => println("{}", rp(ice))
+    case Nothing => println("Error")
+  end
+end
+
+fun valueString(v : Value) : String
+  encode(0, v)
+end
+
+fun json() : String 
+  "{
+    \"glossary\": {
+        \"title\": \"example glossary\",
+		\"GlossDiv\": {
+            \"title\": \"S\",
+			\"GlossList\": {
+                \"GlossEntry\": {
+                    \"ID\": \"SGML\",
+					\"SortAs\": \"SGML\",
+					\"GlossTerm\": \"Standard Generalized Markup Language\",
+					\"Acronym\": \"SGML\",
+					\"Abbrev\": \"ISO 8879:1986\",
+					\"GlossDef\": {
+                        \"para\": \"A meta-markup language, used to create markup languages such as DocBook.\",
+						\"GlossSeeAlso\": [\"GML\", \"XML\"]
+                    },
+					\"GlossSee\": \"markup\"
+                }
+            }
+        }
+    }
+  }"
+end
+
+active class Main
+
+  def encode_test() : unit
+    println("Encoding tests")
+    println("==============")
+    println("{}", encode(0, intJ(1234)))
+  end
+
+  def parse_test() : unit
+    println("Parsing tests")
+    println("=============")
+    val x = parse(json())
+    printMaybe(valueString, x)
+  end
+
+  def decode_test() : unit
+    println("Decoding tests")
+    println("==============")
+    printResult(string_from_int, decode(intD(), "1231"))
+  end
+
+  def main() : unit
+    this.encode_test()
+    this.parse_test()
+    this.decode_test()
+  end
+end

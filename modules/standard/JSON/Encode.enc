@@ -1,14 +1,28 @@
-module Raw -- Rename
+module Encode
   
 import Collections.Mutable.HashMap
+import Data.StringBuffer
+import Hash.HashCode
+import Data.Maybee
 
 
--- TODO: add to string
+
+{-
+  convert to string
+  -- add support for indentation 
+-}
+-- fun encode(indent : int = 0 , value : Value) : String
+fun encode(indent : int, value : Value) : String
+  val sb = new StringBuffer()
+  value.encode(sb)
+  sb.build()
+end
 
 -- parse trees for raw, uninterpreted JSON 
 
 local trait Value
   require def raw() : String
+  require def encode(sb : StringBuffer) : unit
   
   -- pattern matching functions
   require def RawString() : Maybe[String]
@@ -36,7 +50,9 @@ fun readJ(r : real) : Value
 end
 
 fun objectJ(fields : [(String, Value)]) : Value
-  new RawObject((new HashMap[Value]).populate(fields))
+  val hm = new HashMap[Value]()
+  hm.populate(fields)
+  new RawObject(hm)
 end
 
 fun arrayJ(entries : [Value]) : Value
@@ -56,6 +72,12 @@ class RawString : Value(str)
   
   def raw() : String
     this.str
+  end
+  
+  def encode(sb : StringBuffer) : unit
+    sb.add("\"")
+    sb.add(this.str)
+    sb.add("\"")
   end
   
   def RawString() : Maybe[String]
@@ -95,6 +117,10 @@ class RawNumber : Value(num)
     this.num
   end
   
+  def encode(sb : StringBuffer) : unit
+    sb.add(this.num)
+  end
+  
   def RawString() : Maybe[String]
     Nothing
   end
@@ -131,6 +157,29 @@ class RawObject : Value(hash)
   def raw() : String
     "not yet implemented"
   end
+      
+  def encode(sb : StringBuffer) : unit
+    sb.add("{")
+    val iter = this.hash.iterator()
+    if iter.has_next() then
+      val entry = unjust(iter.next())
+      encodeKV(entry.key, entry.value, sb)
+      while iter.has_next() do
+        sb.add(",")
+        val entry = unjust(iter.next())
+        encodeKV(entry.key, entry.value, sb)
+      end
+    end
+    sb.add("}")
+  where
+    fun encodeKV(key : HashCode, value : Value, sb : StringBuffer) : unit
+      sb.add("\"")
+      sb.add("KEY")
+      sb.add("\":")
+      value.encode(sb)      
+    end
+  end
+  
   def RawString() : Maybe[String]
     Nothing
   end
@@ -167,6 +216,18 @@ class RawArray : Value(elems)
   
   def raw() : String
     "not yet implemented"
+  end
+  
+  def encode(sb : StringBuffer) : unit
+    sb.add("[")
+    if |this.elems| > 0 then
+      this.elems(0).encode(sb)
+      for i <- [1 .. |this.elems| - 1] do
+        sb.add(",")
+        this.elems(i).encode(sb)
+      end
+    end
+    sb.add("]")
   end
   
   def RawString() : Maybe[String]
@@ -206,6 +267,10 @@ class RawBool : Value(value)
     "not yet implemented"
   end
   
+  def encode(sb : StringBuffer) : unit
+    sb.add(string_from_bool(this.value))
+  end
+  
   def RawString() : Maybe[String]
     Nothing
   end
@@ -235,6 +300,10 @@ end
 class Null : Value
   def raw() : String
     "not yet implemented"
+  end
+  
+  def encode(sb : StringBuffer) : unit
+    sb.add("null")
   end
 
   def RawString() : Maybe[String]

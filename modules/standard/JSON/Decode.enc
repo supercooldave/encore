@@ -1,11 +1,33 @@
-module Decode
+module Decode(decode
+             ,stringD
+             ,intD
+             ,boolD
+             ,realD
+             ,nullD
+             ,nullable
+             ,fail
+             ,succeed
+             ,field
+             ,at
+             ,index
+             ,array
+             ,dict
+             ,key_value_pairs
+             ,maybe
+             ,value
+             ,map
+             ,map2
+             ,map3
+             ,and_then
+             ,lazy
+             ,Result)
 
-import Data.Maybee hiding(map)
+import Data.Maybee hiding(map,maybe)
 import Data.Either hiding(or_else)
 import Collections.Mutable.HashMap
 import Hash.HashCode
 import JSON.Parser
-import JSON.Raw
+import JSON.Encode
 
 {- The design of this module follows Elm's -}
 
@@ -27,8 +49,8 @@ end
    and then runs a decoder on the result.
    Fails if either the parser or the decoder fails
 
-     decode(new IntDecoder(), "4")      == Right 4
-     decode(new IntDecoder(), "3 + 2")  == Left ...
+     decode(intD(), "4")      == Right 4
+     decode(intD(), "3 + 2")  == Left ...
      
   TODO: find an easier way of creating decoders
 -}
@@ -49,12 +71,17 @@ end
 
 {-  Decode JSON String into a String 
 
-    decode(new StringDecoder(), "true")              == Left ...
-    decode(new StringDecoder(), "42")                == Left ...
-    decode(new StringDecoder(), "3.14")              == Left ...
-    decode(new StringDecoder(), "\"hello\"")         == Right "hello"
-    decode(new StringDecoder(), "{ \"hello\": 42 }") == Left ...
+    decode(stringD(), "true")              == Left ...
+    decode(stringD(), "42")                == Left ...
+    decode(stringD(), "3.14")              == Left ...
+    decode(stringD(), "\"hello\"")         == Right "hello"
+    decode(stringD(), "{ \"hello\": 42 }") == Left ...
 -}
+fun stringD() : Decoder[String]
+  new StringDecoder()
+end
+
+-- StringDecoder implementation
 class StringDecoder : Decoder[String]
   def decode(raw: Value) : Result[String]
     match raw with
@@ -66,12 +93,17 @@ end
 
 {- Decode a JSON number into an int
 
-    decode(new IntDecoder(), "true")              == Left ...
-    decode(new IntDecoder(), "42")                == Right 42
-    decode(new IntDecoder(), "3.14")              == Left ...
-    decode(new IntDecoder(), "\"hello\"")         == Left ...
-    decode(new IntDecoder(), "{ \"hello\": 42 }") == Left ...
+    decode(intD(), "true")              == Left ...
+    decode(intD(), "42")                == Right 42
+    decode(intD(), "3.14")              == Left ...
+    decode(intD(), "\"hello\"")         == Left ...
+    decode(intD(), "{ \"hello\": 42 }") == Left ...
 -}
+fun intD() : Decoder[int]
+  new IntDecoder()
+end
+
+-- IntDecoder implementation
 class IntDecoder : Decoder[int]
   def decode(raw: Value) : Result[int]
     match raw with
@@ -89,12 +121,17 @@ end
 
 {- Decode a JSON boolean into a bool
 
-    decode(new BoolDecoder(), "true")              == Right True
-    decode(new BoolDecoder(), "42")                == Left ...
-    decode(new BoolDecoder(), "3.14")              == Left ...
-    decode(new BoolDecoder(), "\"hello\"")         == Left ...
-    decode(new BoolDecoder(), "{ \"hello\": 42 }") == Left ...
+    decode(boolD(), "true")              == Right True
+    decode(boolD(), "42")                == Left ...
+    decode(boolD(), "3.14")              == Left ...
+    decode(boolD(), "\"hello\"")         == Left ...
+    decode(boolD(), "{ \"hello\": 42 }") == Left ...
 -}
+fun boolD() : Decoder[bool]
+  new BoolDecoder()
+end
+
+-- BoolDecoder implementation
 class BoolDecoder : Decoder[bool]
   def decode(raw: Value) : Result[bool]
     match raw with
@@ -106,12 +143,17 @@ end
 
 {- Decode a JSON number into a real
 
-    decode(new RealDecoder(), "true")              == Left ..
-    decode(new RealDecoder(), "42")                == Right 42
-    decode(new RealDecoder(), "3.14")              == Right 3.14
-    decode(new RealDecoder(), "\"hello\"")         == Left ...
-    decode(new RealDecoder(), "{ \"hello\": 42 }") == Left ...
+    decode(realD(), "true")              == Left ..
+    decode(realD(), "42")                == Right 42
+    decode(realD(), "3.14")              == Right 3.14
+    decode(realD(), "\"hello\"")         == Left ...
+    decode(realD(), "{ \"hello\": 42 }") == Left ...
 -}
+fun realD() : Decoder[real]
+  new RealDecoder()
+end
+
+-- implementation of ReadDecoder
 class RealDecoder : Decoder[real]
   def decode(raw: Value) : Result[real]
     match raw with
@@ -128,12 +170,17 @@ end
 
 {- Decode a `null` value into some value.
 
-    decode(new NullDecoder[bool](False), "null") == Right False
-    decode(new NullDecoder[int](42), "null") == Right 42
-    decode(new NullDecoder[int](42), "42") == Left ...
-    decode(new NullDecoder[int](42), "false") == Left ...
+    decode(nullD[bool](False), "null") == Right False
+    decode(nullD[int](42), "null") == Right 42
+    decode(nullD[int](42), "42") == Left ...
+    decode(nullD[int](42), "false") == Left ...
 
 -}
+fun nullD[t](default : t) : Decoder[t]
+  new NullDecoder(default)
+end
+
+-- implementation of NullDecoder
 class NullDecoder[t] : Decoder[t](default)
   val default : t
   
@@ -152,10 +199,15 @@ end
 
 {- Decode a nullable JSON value into an Elm value.
 
-    decode(new Nullable[int](new IntDecoder()), "42")   == Right (Just 42)
-    decode(new Nullable[int](new IntDecoder()), "null") == Right Nothing
-    decode(new Nullable[int](new IntDecoder()), "true") == Left ...
+    decode(nullable[int](intD()), "42")   == Right (Just 42)
+    decode(nullable[int](intD()), "null") == Right Nothing
+    decode(nullable[int](intD()), "true") == Left ...
 -}
+fun nullable[t](sub : Decoder[t]) : Decoder[Maybe[t]]
+  new Nullable[t](sub)
+end
+
+-- implementation of nullable
 class Nullable[t] : Decoder[Maybe[t]](dec)
   val dec : Decoder[Maybe[t]]
   
@@ -171,6 +223,11 @@ end
 
 
 {- ignore the JSON and fail -}
+fun fail[t](msg : String) : Decoder[t]
+  new Fail[t](msg)
+end
+
+-- implementation of Fail
 class Fail[t] : Decoder[t](msg)
   val msg : String
   
@@ -186,10 +243,15 @@ end
 
 
 {- Ignore the JSON and produce a certain value.  
-    decode(new Succeed[int](42), "true")    == Right 42
-    decode(new Succeed[int](42), "[1,2,3]") == Right 42
-    decode(new Succeed[int](42), "Hello")   == Left ... -- this is not a valid JSON string
+    decode(succeed[int](42), "true")    == Right 42
+    decode(succeed[int](42), "[1,2,3]") == Right 42
+    decode(succeed[int](42), "Hello")   == Left ... -- this is not a valid JSON string
 -}
+fun succeed[t](default : t) : Decoder[t]
+  new Succeed[t](default)
+end
+
+-- implementation of Succeed decoder
 class Succeed[t] : Decoder[t](default)
   val default : t
   
@@ -218,12 +280,17 @@ end
 
 {- Extract a particular field from a JSON object
 
-    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": 3 }")                == Right 3
-    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": 3, \"y\": 4 }")      == Right 3
-    decode(new Field[int]("x", new IntDecoder()), "{ \"x\": true }")             == Left ...
-    decode(new Field[int]("x", new IntDecoder()), "{ \"y\": 4 }")                == Left ...
-    decode(new Field[String]("name", new StringDecoder()), "{ \"name\": \"tom\" }") == Right "tom"
+    decode(field[int]("x", intD()), "{ \"x\": 3 }")                == Right 3
+    decode(field[int]("x", intD()), "{ \"x\": 3, \"y\": 4 }")      == Right 3
+    decode(field[int]("x", intD()), "{ \"x\": true }")             == Left ...
+    decode(field[int]("x", intD()), "{ \"y\": 4 }")                == Left ...
+    decode(field[String]("name", stringD()), "{ \"name\": \"tom\" }") == Right "tom"
 -}
+fun field[t](name : String, sub : Decoder[t]) : Decoder[t]
+  new Field[t](name, sub)
+end
+
+-- implementation of Field decoder
 class Field[t] : Decoder[t](name, sub)
   val name : String
   val sub : Decoder[t]
@@ -251,13 +318,15 @@ end
 
     json = "{ "person": { "name": "tom", "age": 42 } }"
 
-    decodeString (at ["person", "name"] string) json  == Ok "tom"
-    decodeString (at ["person", "age" ] int   ) json  == Ok "42
+    decode(at(["person", "name"], stringD())) json == Right "tom"
+    decode(at(["person", "age" ], intD())) json    == Right "42
 
-This is really just a shorthand for saying things like:
-
-    field "person" (field "name" string) == at ["person","name"] string
 -}
+fun at[t](path : [String], sub : Decoder[t]) : Decoder[t]
+  new At[t](path, sub)
+end
+
+-- implementation of At decoder
 class At[t] : Decoder[t](sub, path)
   val path : [String]
   val sub : Decoder[t]
@@ -292,14 +361,18 @@ end
 
 
 {- extract given index of JSON array
-TODO: fix comment
-    json = """[ "alice", "bob", "chuck" ]"""
+    json = "[ \"alice\", \"bob\", \"chuck\" ]"
 
-    decodeString (index 0 string) json  == Ok "alice"
-    decodeString (index 1 string) json  == Ok "bob"
-    decodeString (index 2 string) json  == Ok "chuck"
-    decodeString (index 3 string) json  == Err ...
+    decode(index(0, stringD()), json)  == Right "alice"
+    decode(index(1, stringD()), json)  == Right "bob"
+    decode(index(2, stringD()), json)  == Right "chuck"
+    decode(index(3, stringD()), json)  == Left ...
 -}
+fun index[t](index : int, dec : Decoder[t]) : Decoder[t]
+  new Index(index, dec)
+end
+
+-- implementation of Index decoder
 class Index[t] : Decoder[t](index, dec)
   val index : int
   val dec : Decoder[t]
@@ -326,9 +399,14 @@ end
 
 {- Decode a JSON array
 
-    decode(new ArrayDecoder[int](new IntDecoder()), "[1,2,3]")      == Right [1,2,3]
-    decode(new ArrayDecoder[int](new IntDecoder()), "[true,false]") == Right [true,false] 
+    decode(array[int](intD()), "[1,2,3]")      == Right [1,2,3]
+    decode(array[int](intD()), "[true,false]") == Right [true,false] 
 -}
+fun array[t](dec : Decoder[t]) : Decoder[[t]]
+  new ArrayDecoder[t](dec)
+end
+
+-- implementation of array decoder
 class ArrayDecoder[t] : Decoder[[t]](dec)
   val dec : Decoder[t]
   
@@ -360,9 +438,14 @@ end
 
 {- Decode a JSON object into a hash table
 
-    decode(new Dict[t](new IntDecoder()), "{ \"alice\": 42, \"bob\": 99 }")
+    decode(dict[t](intD()), "{ \"alice\": 42, \"bob\": 99 }")
       == HashMap["alice" => 42, "bob" => 99]
 -}
+fun dict[t](dec : Decoder[t]) : Decoder[HashMap[t]]
+  new Dict[t](dec)
+end
+
+-- implementation of Dict decoder
 class Dict[t] : Decoder[HashMap[t]](dec)
   val dec : Decoder[t]
   
@@ -398,27 +481,27 @@ end
 -- genericied
 {- Decode a JSON object into an array of pairs.
 
-    decode(keyValuePairs(new IntDecoder()), "{ \"alice\": 42, \"bob\": 99 }")
+    decode(key_value_pairs[int](intD()), "{ \"alice\": 42, \"bob\": 99 }")
       == [("alice", 42), ("bob", 99)]
 -}
-{- TODO: FIX: NOT TYPE CHECKING
-fun key_value_pairs[t](dec : Decoder[t]) : Decoder[(HashCode, t)]
+fun key_value_pairs[t](dec : Decoder[t]) : Decoder[[(HashCode, t)]]
   map(fun(x : HashMap[t]) => x.key_value_pairs(), new Dict(dec) : Decoder[HashMap[t]])
 end
--}
+
 
 
 
 -- utilities
 fun one_of[t](decs : [Decoder[t]]) : Decoder[t]
-  one_of_helper(decs,0)
-where
-  fun one_of_helper(decs : [Decoder[t]], index : int) : Decoder[t]
-    if index < |decs| then
-      or_else(decs(index), one_of_helper(decs, index + 1))
-    else
-      new Fail[t]("No valid choice")
-    end
+  one_of_helper[t](decs,0)
+end
+
+-- previously was local function of previous, but compiler bug 
+fun one_of_helper[t](decs : [Decoder[t]], index : int) : Decoder[t]
+  if index < |decs| then
+    or_else(decs(index), one_of_helper(decs, index + 1))
+  else
+    new Fail[t]("No valid choice")
   end
 end
 
@@ -459,6 +542,11 @@ the content *may* be a float. There is no `height` field, so the decoder fails.
 Point is, `maybe` will make exactly what it contains conditional. For optional
 fields, this means you probably want it *outside* a use of `field` or `at`.
 -}
+fun maybe[t](dec : Decoder[t]) : Decoder[Maybe[t]]
+  new MaybeDecoder[t](dec)
+end
+
+-- implementation of MaybeDecoder
 class MaybeDecoder[t] : Decoder[Maybe[t]](dec)
   val dec : Decoder[t]
   
@@ -480,6 +568,11 @@ deal with later. Or if you are going to send it out a port and do not care
 about its structure.
 -}
 
+fun value() : Decoder[Value]
+  new ValueDecoder()
+end
+
+-- implementation of ValueDecoder
 class ValueDecoder : Decoder[Value]
   def decode(value : Value) : Result[Value]
     good(value)
@@ -489,10 +582,10 @@ end
 
 -- mapping functions
 fun map[a,v](f : a -> v, dec : Decoder[a]) : Decoder[v]
-  new Map[a,v](f, dec)
+  new MMap[a,v](f, dec)
 end
 
-class Map[a,v] : Decoder[v](dec,f)
+class MMap[a,v] : Decoder[v](dec,f)
   val dec : Decoder[a]
   val f : a -> v
   
@@ -573,6 +666,10 @@ end
 
 --- TODO: UP TO 8 ---
 
+
+fun and_then[a,b](f : a -> Decoder[b], dec : Decoder[a]) : Decoder[b]
+  new AndThen[a,b](f, dec)
+end
 
 -- others
 class AndThen[a,b] : Decoder[b](dec,f)

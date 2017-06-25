@@ -2,7 +2,7 @@ module Parser
 
 import Collections.Mutable.HashMap
 import Collections.Mutable.LinkedList
-import JSON.Raw
+import JSON.Encode
 import Data.Maybee
 import Data.Char as Char
 
@@ -76,12 +76,12 @@ local class Parser
     end
   end
 
-  def parse_number() : Maybe[Value] -- TODO: Make it Maybe[RawNumber]
+  def parse_number() : Maybe[RawNumber]
     val start = this.index
     this.read_char('-')  -- consume a possible '-'
     val first = this.current()
     if not this.read_digit() then
-      return Nothing : Maybe[Value]  -- expected a digit
+      return Nothing : Maybe[RawNumber]  -- expected a digit
     end
     if first != '0' then
       while this.read_digit() do
@@ -90,7 +90,7 @@ local class Parser
     end
     
     if is_nothing(this.read_fraction()) || is_nothing(this.read_exponent()) then
-      return Nothing : Maybe[Value] -- error in fraction or exponent
+      return Nothing : Maybe[RawNumber] -- error in fraction or exponent
     end
     
     Just(new RawNumber(unjust(this.str.substring(start, this.index))))
